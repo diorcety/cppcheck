@@ -26,8 +26,11 @@
 #include "tokenlist.h"
 #include "utils.h"
 
+#include <array>
 #include <cstring>
 #include <fstream>
+#include <sstream>
+#include <istream>
 #include <utility>
 
 
@@ -193,6 +196,89 @@ ImportProject::Type ImportProject::import(const std::string &filename)
     return UNKNOWN;
 }
 
+static int runCommand(const std::string &command, std::string &output) {
+    std::array<char, 512> buffer;
+#ifdef _WIN32
+    FILE* pipe = _popen(command.c_str(), "r");
+#else
+    FILE* pipe = popen(command.c_str(), "r");
+#endif
+    if (!pipe) {
+        return  -1;
+    }
+    while (fgets(buffer.data(), buffer.max_size(), pipe) != NULL) {
+        output += buffer.data();
+    }
+#ifdef _WIN32
+    return _pclose(pipe);
+#else
+    return pclose(pipe);
+#endif
+}
+
+/**
+ * Remove heading and trailing whitespaces from the input parameter.
+ * If string is all spaces/tabs, return empty string.
+ * @param s The string to trim.
+ */
+static std::string trim(const std::string& s)
+{
+    const std::string::size_type beg = s.find_first_not_of(" \t");
+    if (beg == std::string::npos)
+        return "";
+    const std::string::size_type end = s.find_last_not_of(" \t");
+    return s.substr(beg, end - beg + 1);
+}
+
+constexpr char GCC_DEFINE_PREFIX[] = "#define ";
+constexpr int GCC_DEFINE_PREFIX_LENGTH = 8;
+static void detectCompilerBultins(const std::string &compiler, struct ImportProject::FileSettings &fs)
+{
+    if (compiler.find("gcc") != std::string::npos ||
+        compiler.find("g++") != std::string::npos ||
+        compiler.find("clang") != std::string::npos) {
+
+        std::string c_or_cpp = compiler.find("++") != std::string::npos ? "-xc++" : "-xc";
+
+        // Includes
+        {
+            std::string command = compiler + " " + c_or_cpp + " -v -E /dev/null 2>&1";
+            std::string output;
+            if (runCommand(command, output) == 0) {
+                bool is_path = false;
+                std::istringstream iss(output);
+                for (std::string line; std::getline(iss, line);) {
+                    if (line.find("search starts here") != std::string::npos) {
+                        is_path = true;
+                    } else if (line.find("End of search list") != std::string::npos) {
+                        is_path = false;
+                    } else if (is_path) {
+                        fs.includePaths.push_back(trim(line));
+                    }
+                }
+            }
+        }
+
+        // Defines
+        {
+            std::string command = compiler + " " + c_or_cpp + " -dM -E /dev/null 2>&1";
+            std::string output;
+            if (runCommand(command, output) == 0) {
+                std::istringstream iss(output);
+                for (std::string line; std::getline(iss, line);) {
+                    if (line.substr(0, GCC_DEFINE_PREFIX_LENGTH) == GCC_DEFINE_PREFIX) {
+                        auto space = line.find_first_of(" ", GCC_DEFINE_PREFIX_LENGTH);
+                        if (space != std::string::npos) {
+                            line[space] = '=';
+                        }
+                        fs.defines += line.substr(GCC_DEFINE_PREFIX_LENGTH) + ";";
+                    }
+                }
+            }
+        }
+    }
+}
+
 void ImportProject::importCompileCommands(std::istream &istr)
 {
     std::map<std::string, std::string> values;
@@ -227,6 +313,8 @@ void ImportProject::importCompileCommands(std::istream &istr)
                 const std::string& command = values["command"];
                 const std::string directory = Path::fromNativeSeparators(values["directory"]);
                 std::string::size_type pos = 0;
+                const std::string compiler = command.substr(0, command.find(" "));
+                detectCompilerBultins(compiler, fs);
                 while (std::string::npos != (pos = command.find(' ',pos))) {
                     pos++;
                     if (pos >= command.size())
