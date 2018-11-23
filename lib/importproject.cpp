@@ -130,11 +130,12 @@ static bool simplifyPathWithVariables(std::string &s, std::map<std::string, std:
     return true;
 }
 
-void ImportProject::FileSettings::setIncludePaths(const std::string &basepath, const std::list<std::string> &in, std::map<std::string, std::string, cppcheck::stricmp> &variables)
+void ImportProject::FileSettings::setIncludePaths(const std::string &basepath, const std::list<std::string> &sin, const std::list<std::string> &in, std::map<std::string, std::string, cppcheck::stricmp> &variables)
 {
     std::list<std::string> I;
     // only parse each includePath once - so remove duplicates
     std::list<std::string> uniqueIncludePaths = in;
+    uniqueIncludePaths.insert(uniqueIncludePaths.end(), sin.begin(), sin.end());
     uniqueIncludePaths.sort();
     uniqueIncludePaths.unique();
 
@@ -285,7 +286,7 @@ void ImportProject::importCompileCommands(std::istream &istr)
                     }
                 }
                 std::map<std::string, std::string, cppcheck::stricmp> variables;
-                fs.setIncludePaths(directory, fs.includePaths, variables);
+                fs.setIncludePaths(directory, fs.systemIncludePaths, fs.includePaths, variables);
                 fs.setDefines(fs.defines);
                 fileSettings.push_back(fs);
             }
@@ -573,7 +574,7 @@ void ImportProject::importVcxproj(const std::string &filename, std::map<std::str
                 additionalIncludePaths += ';' + i.additionalIncludePaths;
             }
             fs.setDefines(fs.defines);
-            fs.setIncludePaths(Path::getPathFromFilename(filename), toStringList(includePath + ';' + additionalIncludePaths), variables);
+            fs.setIncludePaths(Path::getPathFromFilename(filename), std::list<std::string>(), toStringList(includePath + ';' + additionalIncludePaths), variables);
             fileSettings.push_back(fs);
         }
     }
@@ -832,7 +833,7 @@ void ImportProject::importBcb6Prj(const std::string &projectFilename)
         // We can also force C++ compilation for all files using the -P command line switch.
         const bool cppMode = forceCppMode || Path::getFilenameExtensionInLowerCase(c) == ".cpp";
         FileSettings fs;
-        fs.setIncludePaths(projectDir, toStringList(includePath), variables);
+        fs.setIncludePaths(projectDir, std::list<std::string>(), toStringList(includePath), variables);
         fs.setDefines(cppMode ? cppDefines : defines);
         fs.filename = Path::simplifyPath(Path::isAbsolute(c) ? c : projectDir + c);
         fileSettings.push_back(fs);

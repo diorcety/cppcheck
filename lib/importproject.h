@@ -74,7 +74,7 @@ public:
         bool useMfc;
 
         void setDefines(std::string defs);
-        void setIncludePaths(const std::string &basepath, const std::list<std::string> &in, std::map<std::string, std::string, cppcheck::stricmp> &variables);
+        void setIncludePaths(const std::string &basepath, const std::list<std::string> &sin, const std::list<std::string> &in, std::map<std::string, std::string, cppcheck::stricmp> &variables);
     };
     std::list<FileSettings> fileSettings;
 
