@@ -439,7 +439,6 @@ void simplecpp::TokenList::readfile(std::istream &istr, const std::string &filen
             if (oldLastToken != cback()) {
                 oldLastToken = cback();
                 const std::string lastline(lastLine());
-
                 if (lastline == "# file %str%") {
                     loc.push(location);
                     location.fileIndex = fileIndex(cback()->str().substr(1U, cback()->str().size() - 2U));
@@ -448,6 +447,10 @@ void simplecpp::TokenList::readfile(std::istream &istr, const std::string &filen
                     loc.push(location);
                     location.line = std::atol(cback()->str().c_str());
                 } else if (lastline == "# line %num% %str%") {
+                    loc.push(location);
+                    location.fileIndex = fileIndex(cback()->str().substr(1U, cback()->str().size() - 2U));
+                    location.line = std::atol(cback()->previous->str().c_str());
+                } else if (lastline == "# %num% %str%") {
                     loc.push(location);
                     location.fileIndex = fileIndex(cback()->str().substr(1U, cback()->str().size() - 2U));
                     location.line = std::atol(cback()->previous->str().c_str());
@@ -1133,7 +1136,7 @@ namespace simplecpp {
             std::istringstream istr(def);
             tokenListDefine.readfile(istr);
             if (!parseDefine(tokenListDefine.cfront()))
-                throw std::runtime_error("bad macro syntax");
+                throw std::runtime_error("bad macro syntax. macroname=" + name + " value=" + value);
         }
 
         Macro(const Macro &macro) : nameTokDef(NULL), files(macro.files), tokenListDefine(macro.files), valueDefinedInCode_(macro.valueDefinedInCode_) {
@@ -1502,7 +1505,7 @@ namespace simplecpp {
             for (const Token *tok = valueToken; tok != endToken;) {
                 if (tok->op != '#') {
                     // A##B => AB
-                    if (tok->next && tok->next->op == '#' && tok->next->next && tok->next->next->op == '#') {
+                    if (sameline(tok, tok->next) && tok->next && tok->next->op == '#' && tok->next->next && tok->next->next->op == '#') {
                         if (!sameline(tok, tok->next->next->next))
                             throw invalidHashHash(tok->location, name());
                         output->push_back(newMacroToken(expandArgStr(tok, parametertokens2), loc, isReplaced(expandedmacros)));
